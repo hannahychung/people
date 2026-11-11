@@ -1,0 +1,74 @@
+html,
+body {
+    margin: 0;
+    height: 100%;
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 4rem;
+}
+
+#stage-header {
+    font-size: 1.2rem
+}
+
+#stage {
+    position: relative;
+    width: 800px;
+    height: 500px;
+    overflow: hidden;
+    background: #fff;
+}
+
+.figure {
+    position: absolute;
+    height: auto;
+}
+
+#gallery {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 20px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 4px;
+}
+
+.thumb {
+    border: 0.5px solid #e5e5e5;
+    transition: transform 0.15s;
+}
+
+.thumb:hover {
+    transform: scale(1.04);
+}
+
+#viewer {
+    position: fixed;
+    inset: 0;
+    background: rgb(255, 255, 255);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    flex-direction: column;
+}
+
+#viewer[hidden] {
+    display: none;
+}
+
+.snapshot-item {
+    flex: 0 0 auto;
+    width: 140px;
+}
+
+.snapshot-label {
+    margin-top: 4px;
+    font-size: 11px;
+    text-align: center;
+    color: #666;
+}
