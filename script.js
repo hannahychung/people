@@ -1,9 +1,10 @@
 
 // Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
-import { getFirestore, collection, getDocs } from 'firebase/firestore/lite';
-import { query, where } from "firebase/firestore";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-analytics.js";
+import {
+    getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 // TODO: Add SDKs for Firebase products that you want to use
 // https://firebase.google.com/docs/web/setup#available-libraries
@@ -31,6 +32,7 @@ const stage = document.getElementById("stage");
 const gallery = document.getElementById("gallery");
 const viewer = document.getElementById("viewer");
 var note = "";
+let figureData = [];
 
 const figures = {
     a: "images/person_a.svg",
@@ -65,6 +67,41 @@ function random(min, max) {
     return Math.random() * (max - min) + min;
 }
 
+//keeping track of new snapshots
+
+function listenForSnapshots() {
+    const q = query(collection(db, "notes"), orderBy("timestamp", "asc"));
+
+    onSnapshot(
+        q,
+        (querySnapshot) => {
+            querySnapshot.docChanges().forEach((change) => {
+                if (change.type === "added") {
+                    const d = change.doc.data();
+                    if (!d.figures) return;
+                    const ts = d.timestamp ? d.timestamp.toDate() : new Date();
+
+                    addSnapshotToGallery({
+                        id: change.doc.id,
+                        note: d.note,
+                        figures: d.figures,
+                        w: d.stageWidth,
+                        h: d.stageHeight,
+                        timestamp: ts,
+                    });
+                }
+            });
+
+            gallery.scrollTop = gallery.scrollHeight;
+        },
+        (error) => {
+            console.error("Error listening for notes: ", error);
+        }
+    );
+}
+
+listenForSnapshots();
+
 document.addEventListener("keydown", (event) => {
     const key = event.key.toLowerCase();
 
@@ -81,6 +118,7 @@ document.addEventListener("keydown", (event) => {
         event.preventDefault();
         if (stage.lastElementChild) {
             stage.lastElementChild.remove();
+            figureData.pop();
             note = note.slice(0, -1);
         }
         return;
@@ -97,38 +135,36 @@ document.addEventListener("keydown", (event) => {
 
     // true for "A", false for "a"
     const isUpper = event.key !== key;
-    note += key;
-
-    spawnFigure(figures[key], isUpper);
+    note += isUpper ? key.toUpperCase() : key;  // optional: keeps case in the caption
+    spawnFigure(key, isUpper);
 });
 
-function spawnFigure(src, isUpper) {
+function renderFigure(container, { key, upper, x, y, rotation }) {
     const img = document.createElement("img");
-    img.src = src;
+    img.src = figures[key];
     img.className = "figure";
-
-    const size = 140;
-    img.style.width = size + "px";
-
-    const x = random(0, stage.clientWidth - size);
-    const y = random(0, stage.clientHeight - size);
-    const rotation = random(-180, 180);
-
+    img.style.width = "140px";
     img.style.left = x + "px";
     img.style.top = y + "px";
     img.style.transform = `rotate(${rotation}deg)`;
-
-    if (isUpper) {
-        img.style.filter = "brightness(0) invert(1)";
-    }
-
-    stage.appendChild(img);
+    if (upper) img.style.filter = "brightness(0) invert(1)";
+    container.appendChild(img);
 }
 
-function takeSnapshot(scale) {
-    const w = stage.clientWidth;
-    const h = stage.clientHeight;
+function spawnFigure(key, isUpper) {
+    const size = 140;
+    const data = {
+        key,
+        upper: isUpper,
+        x: random(0, stage.clientWidth - size),
+        y: random(0, stage.clientHeight - size),
+        rotation: random(-180, 180),
+    };
+    figureData.push(data);
+    renderFigure(stage, data);
+}
 
+function takeSnapshot(source, w, h, scale) {
     const box = document.createElement("div");
     box.className = "snapshot-box";
     box.style.width = w * scale + "px";
@@ -136,7 +172,7 @@ function takeSnapshot(scale) {
     box.style.overflow = "hidden";
     box.style.position = "relative";
 
-    const copy = stage.cloneNode(true);
+    const copy = source.cloneNode(true);
     copy.removeAttribute("id");
     copy.classList.add("snapshot-copy");
     copy.style.width = w + "px";
@@ -164,11 +200,14 @@ function formatTimestamp(date) {
 
 //saving a snapshot to firestore
 
-async function saveNote(timestamp) {
+async function saveNote({ text, figs, w, h }) {
     try {
         const docRef = await addDoc(collection(db, "notes"), {
-            note: note,
-            timestamp: timestamp
+            note: text,
+            figures: figs,
+            stageWidth: w,
+            stageHeight: h,
+            timestamp: serverTimestamp(),
         });
         console.log("Document written with ID: ", docRef.id);
     } catch (e) {
@@ -179,27 +218,38 @@ async function saveNote(timestamp) {
 function saveSnapshot() {
     if (!stage.children.length) return;
 
-    const timestamp = new Date();
+    saveNote({
+        text: note,
+        figs: [...figureData],
+        w: stage.clientWidth,
+        h: stage.clientHeight,
+    });
 
-    saveNote(timestamp);
+    stage.innerHTML = "";
+    figureData = [];
+    note = "";
+}
 
-    //loading a snapshot
-    const thumbWidth = 140;
-    const scale = thumbWidth / stage.clientWidth;
+function addSnapshotToGallery({ note: text, figures: figs, w, h, timestamp }) {
+    // rebuild the stage from data
+    const source = document.createElement("div");
+    source.className = stage.className;
+    source.style.cssText = `position: relative; width: ${w}px; height: ${h}px;`;
+    figs.forEach((f) => renderFigure(source, f));
+
+    const scale = 140 / w;
 
     const item = document.createElement("div");
     item.className = "snapshot-item";
 
-    const thumb = takeSnapshot(scale);
+    const thumb = takeSnapshot(source, w, h, scale);
     thumb.classList.add("thumb");
     thumb.style.cursor = "pointer";
-
-    thumb._snapshotHTML = stage.innerHTML;
-    thumb._w = stage.clientWidth;
-    thumb._h = stage.clientHeight;
+    thumb._snapshotHTML = source.innerHTML;
+    thumb._w = w;
+    thumb._h = h;
     thumb._timestamp = timestamp;
-    thumb._note = note;
-
+    thumb._note = text;
     thumb.addEventListener("click", () => openSnapshot(thumb));
 
     const label = document.createElement("div");
@@ -210,11 +260,6 @@ function saveSnapshot() {
     item.appendChild(thumb);
     item.appendChild(label);
     gallery.appendChild(item);
-
-    stage.innerHTML = "";
-    gallery.scrollTop = gallery.scrollHeight;
-    console.log(note);
-    note = "";
 }
 
 function openSnapshot(thumb) {
@@ -247,8 +292,6 @@ function openSnapshot(thumb) {
 
     viewer.innerHTML = "";
     viewer.appendChild(box);
-    viewer.hidden = false;
-
     viewer.hidden = false;
 
     const caption = document.createElement("div");
