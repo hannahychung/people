@@ -61,6 +61,16 @@ const figures = {
     x: "images/person_x.svg",
     y: "images/person_y.svg",
     z: "images/person_z.svg",
+    0: "images/person_0.svg",
+    1: "images/person_1.svg",
+    2: "images/person_2.svg",
+    3: "images/person_3.svg",
+    4: "images/person_4.svg",
+    5: "images/person_5.svg",
+    6: "images/person_6.svg",
+    7: "images/person_7.svg",
+    8: "images/person_8.svg",
+    9: "images/person_9.svg"
 };
 
 function random(min, max) {
