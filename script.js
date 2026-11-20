@@ -33,6 +33,8 @@ const gallery = document.getElementById("gallery");
 const viewer = document.getElementById("viewer");
 var note = "";
 let figureData = [];
+let pressHistory = [];
+const figureEls = new Map();
 
 const figures = {
     a: "images/person_a.svg",
@@ -126,9 +128,19 @@ document.addEventListener("keydown", (event) => {
 
     if (event.key === "Backspace" || event.key === "Delete") {
         event.preventDefault();
-        if (stage.lastElementChild) {
-            stage.lastElementChild.remove();
-            figureData.pop();
+        const data = pressHistory.pop();
+        if (data) {
+            data.presses -= 1;
+            if (data.presses === 0) {
+                // that press created the figure, so remove it
+                figureEls.get(data).remove();
+                figureEls.delete(data);
+                figureData.splice(figureData.indexOf(data), 1);
+            } else {
+                // that press darkened it, so step it back
+                data.opacity = opacityFor(data.presses);
+                figureEls.get(data).style.opacity = data.opacity;
+            }
             note = note.slice(0, -1);
         }
         return;
@@ -149,7 +161,7 @@ document.addEventListener("keydown", (event) => {
     spawnFigure(key, isUpper);
 });
 
-function renderFigure(container, { key, upper, x, y, rotation }) {
+function renderFigure(container, { key, upper, x, y, rotation, opacity }) {
     const img = document.createElement("img");
     img.src = figures[key];
     img.className = "figure";
@@ -157,21 +169,46 @@ function renderFigure(container, { key, upper, x, y, rotation }) {
     img.style.left = x + "px";
     img.style.top = y + "px";
     img.style.transform = `rotate(${rotation}deg)`;
-    if (upper) img.style.filter = "brightness(0) invert(1)";
+    img.style.opacity = opacity ?? 1;
+    // if (upper) img.style.filter = "brightness(0) invert(1)";
     container.appendChild(img);
+    return img;
+}
+
+const START_OPACITY = 0.2;
+const OPACITY_STEP = 0.15;
+
+function opacityFor(presses) {
+    return Math.min(1, START_OPACITY + (presses - 1) * OPACITY_STEP);
 }
 
 function spawnFigure(key, isUpper) {
     const size = 140;
-    const data = {
-        key,
-        upper: isUpper,
-        x: random(0, stage.clientWidth - size),
-        y: random(0, stage.clientHeight - size),
-        rotation: random(-180, 180),
-    };
-    figureData.push(data);
-    renderFigure(stage, data);
+
+    // is this figure already on the stage?
+    let data = figureData.find((f) => f.key === key && f.upper === isUpper);
+
+    if (data) {
+        // darken the existing figure
+        data.presses += 1;
+        data.opacity = opacityFor(data.presses);
+        figureEls.get(data).style.opacity = data.opacity;
+    } else {
+        // first press: create it light
+        data = {
+            key,
+            upper: isUpper,
+            x: random(0, stage.clientWidth - size),
+            y: random(0, stage.clientHeight - size),
+            rotation: random(-180, 180),
+            presses: 1,
+            opacity: opacityFor(1),
+        };
+        figureData.push(data);
+        figureEls.set(data, renderFigure(stage, data));
+    }
+
+    pressHistory.push(data);
 }
 
 function takeSnapshot(source, w, h, scale) {
@@ -234,9 +271,10 @@ function saveSnapshot() {
         w: stage.clientWidth,
         h: stage.clientHeight,
     });
-
     stage.innerHTML = "";
     figureData = [];
+    pressHistory = [];
+    figureEls.clear();
     note = "";
 }
 
